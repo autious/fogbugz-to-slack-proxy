@@ -8,91 +8,107 @@ import requests
 import sys
 
 values_of_interest = [
-	"assignedtoname",
-	"customeremail",
-	"title",
-	"eventtype"
+    "assignedtoname",
+    "customeremail",
+    "title",
+    "eventtype"
 ]
 
 value_translation = {
-	"assignedtoname" : "Assigned",
-	"customeremail" : "Email",
-	"title" : "Title",
-	"eventtype" : "Event Type"
+    "assignedtoname" : "Assigned",
+    "customeremail" : "Email",
+    "title" : "Title",
+    "eventtype" : "Event Type"
 }
 
 size_translation = {
-	"assignedtoname" : True,
-	"customeremail" : True,
-	"title" : True,
-	"eventtype" : True
+    "assignedtoname" : True,
+    "customeremail" : True,
+    "title" : True,
+    "eventtype" : True
 }
 
 
+def convertPayload( json_msg ):
+    print json.dumps(json_msg, indent=4)
 
-if len(sys.argv) == 3:
 
-	response_url = sys.argv[1]
-	PORT = sys.argv[2]
+    caseeventid = json_msg["caseeventid"]
+    casenumber = json_msg["casenumber"]
 
-	print "Responding to " + response_url + " listening to " + PORT
+    fields = []
 
-	from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
-	from cgi import parse_header, parse_multipart, parse_qs
+    for k,v in json_msg.iteritems():
+            if k in values_of_interest:
+                    fields.append( {
+                            "title": value_translation[k],
+                            "value": v,
+                            "short": size_translation[k]
+                    })
 
-	class Handler(BaseHTTPRequestHandler):
-		def do_POST(self):
-			ctype, pdict = parse_header(self.headers.getheader('content-type'))
-			length = int(self.headers.getheader('content-length'))
-			data = urllib.unquote(self.rfile.read(length))
+    payload = {
+            "text": "Update on Issue <https://humble.fogbugz.com/default.asp?" 
+                    + str(casenumber) 
+                    + "#" 
+                    + str(caseeventid) 
+                    + "|" 
+                    + str(json_msg["casenumber"]) 
+                    + ">",
+            "attachments": [ {
+                    "pretext": "",
+                    "fallback": "",
+                    "text": "",
+                    "color": "",
+                    "mrkdwn_in": ["text", "title", "fallback"],
+                    "fields": fields
+            } ]
+    }
 
-			print "Got Message"
-			json_msg = json.loads(data)
+    return payload
 
-			print json.dumps(json_msg, indent=4)
+if sys.argv[1] == "test" and len(sys.argv) == 3:
+    print "Running test"
 
-			print "From: " + str(self.client_address[0])
+    print json.dumps(convertPayload(json.load(open(sys.argv[2]))),indent=4)
 
-			caseeventid = json_msg["caseeventid"]
-			casenumber = json_msg["casenumber"]
+elif len(sys.argv) == 3:
 
-			fields = []
+    response_url = sys.argv[1]
+    PORT = sys.argv[2]
 
-			for k,v in json_msg.iteritems():
-				if k in values_of_interest:
-					fields.append( {
-						"title": value_translation[k],
-						"value": v,
-						"short": size_translation[k]
-					})
+    print "Responding to " + response_url + " listening to " + PORT
 
-			payload = {
-				"text": "Update on Issue <https://humble.fogbugz.com/default.asp?" + str(casenumber) + "#" + str(caseeventid) + "|" + str(json_msg["casenumber"]) + ">",
-				"attachments": [ {
-					"pretext": "",
-					"fallback": "",
-					"text": "",
-					"color": "",
-					"mrkdwn_in": ["text", "title", "fallback"],
-					"fields": fields
-				} ]
-			}
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from cgi import parse_header, parse_multipart, parse_qs
 
-			headers = {'content-type': 'application/json'}
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            ctype, pdict = parse_header(self.headers.getheader('content-type'))
+            length = int(self.headers.getheader('content-length'))
+            data = urllib.unquote(self.rfile.read(length))
 
-			response = requests.post(response_url, data=json.dumps(payload), headers=headers)
+            print "Got Message"
+            print "From: " + str(self.client_address[0])
 
-			print response
+            json_msg = json.loads(data)
 
-			self.send_response(200)
-			self.send_header("Content-type", "text/html")
-			self.end_headers()
+            payload = convertPayload(json_msg)
 
-	httpd = SocketServer.TCPServer(("", int(PORT)), Handler)
+            headers = {'content-type': 'application/json'}
 
-	print "serving at port", PORT
+            response = requests.post(response_url, data=json.dumps(payload), headers=headers)
 
-	httpd.serve_forever()
+            print response
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+    httpd = SocketServer.TCPServer(("", int(PORT)), Handler)
+
+    print "serving at port", PORT
+
+    httpd.serve_forever()
 else:
-	print "Usage main.py <slack-webhook-token> <listening-port>"
-	print "you gave " + str(len(sys.argv))
+    print "Usage main.py <slack-webhook-token> <listening-port>"
+    print "you gave " + str(len(sys.argv))
